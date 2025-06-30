@@ -67,5 +67,8 @@ jobs:
           # Optional: Add/update .env file if needed
           ssh $EC2_USER@$EC2_HOST "echo '$ENV_VARS_JSON' > ~/applications/website/.env"
 
+          # Start the Next.js app on EC2 (if it's not already running)
+          ssh $EC2_USER@$EC2_HOST "cd ~/applications/website && npm run start &"
+
           # Restart Nginx
           ssh $EC2_USER@$EC2_HOST "sudo systemctl restart nginx"
