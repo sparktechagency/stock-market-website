@@ -29,7 +29,7 @@ jobs:
     needs: build
 
     steps:
-      - name: Checkout the repository again (for deployment)
+      - name: Checkout the repository again
         uses: actions/checkout@v3
 
       - name: Set up Node.js
@@ -40,10 +40,10 @@ jobs:
       - name: Install Dependencies
         run: npm install --frozen-lockfile
 
-      - name: Build Next.js Project Again
+      - name: Build Next.js Project
         run: npm run build
 
-      - name: Set up SSH to EC2
+      - name: Set up SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         run: |
@@ -52,23 +52,32 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy Next.js Build to EC2
+      - name: Deploy and Restart on EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           ENV_VARS_JSON: ${{ secrets.ENV_VARS_JSON }}
         run: |
-          # Create directory on EC2 if it doesn't exist
-          ssh $EC2_USER@$EC2_HOST "mkdir -p ~/applications/website/.next"
+          ssh $EC2_USER@$EC2_HOST << 'EOF'
+            # Set environment variables
+            echo '$ENV_VARS_JSON' > ~/applications/website/.env
 
-          # Upload the Next.js build output to EC2
-          rsync -avz .next/ $EC2_USER@$EC2_HOST:~/applications/website/.next/
+            # Navigate to app
+            cd ~/applications/website
 
-          # Optional: Add/update .env file if needed
-          ssh $EC2_USER@$EC2_HOST "echo '$ENV_VARS_JSON' > ~/applications/website/.env"
+            # Install dependencies and build
+            npm install
+            npm run build
 
-          # Start the Next.js app on EC2 (if it's not already running)
-          ssh $EC2_USER@$EC2_HOST "cd ~/applications/website && npm run start &"
+            # Install PM2 if needed
+            if ! command -v pm2 &> /dev/null; then
+              npm install -g pm2
+            fi
 
-          # Restart Nginx
-          ssh $EC2_USER@$EC2_HOST "sudo systemctl restart nginx"
+            # Restart the app with PM2
+            pm2 delete nextjs-app || true
+            pm2 start "npm start" --name nextjs-app --watch
+
+            # Restart Nginx
+            sudo systemctl restart nginx
+          EOF
