@@ -81,7 +81,7 @@ jobs:
 
             # Restart app with PM2 on correct host and port
             pm2 delete website || true
-            pm2 start "next start -p 3000 -H 0.0.0.0" --name website
+            pm2 start "npm start" --name website
 
             # Restart nginx
             sudo systemctl restart nginx
