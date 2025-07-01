@@ -52,21 +52,26 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy and Restart on EC2
+      - name: Deploy Full App and Restart on EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           ENV_VARS_JSON: ${{ secrets.ENV_VARS_JSON }}
         run: |
-          ssh $EC2_USER@$EC2_HOST << 'EOF'
-            # Set environment variables
-            echo '$ENV_VARS_JSON' > ~/applications/website/.env
+          # Upload full project to EC2 (excluding node_modules and .git)
+          rsync -avz --exclude '.git' --exclude 'node_modules' ./ $EC2_USER@$EC2_HOST:~/applications/website/
 
-            # Navigate to app
+          # Run remote setup and restart
+          ssh $EC2_USER@$EC2_HOST << 'EOF'
             cd ~/applications/website
 
-            # Install dependencies and build
+            # Write .env file
+            echo '$ENV_VARS_JSON' > .env
+
+            # Install dependencies
             npm install
+
+            # Build the app
             npm run build
 
             # Install PM2 if needed
@@ -74,10 +79,10 @@ jobs:
               npm install -g pm2
             fi
 
-            # Restart the app with PM2
-            pm2 delete nextjs-app || true
-            pm2 start "npm start" --name website --watch
+            # Restart app with PM2 on correct host and port
+            pm2 delete website || true
+            pm2 start "next start -p 3000 -H 0.0.0.0" --name website
 
-            # Restart Nginx
+            # Restart nginx
             sudo systemctl restart nginx
           EOF
